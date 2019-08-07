@@ -1,0 +1,23 @@
+service: indeedscraper
+
+provider:
+  name: aws
+  runtime: python3.6
+  
+functions:
+  scrape:
+    handler: handler.scrape
+    events:
+      - schedule:
+        rate: rate(1 day)
+        enabled: false
+        input:
+          pages: 5
+      
+
+plugins:
+  - serverless-python-requirements
+
+custom:
+  pythonRequirements:
+    dockerizePip: true
