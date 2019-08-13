@@ -1,8 +1,22 @@
-service: indeedscraper
+service: jobs-scraper
 
 provider:
   name: aws
   runtime: python3.6
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:DescribeTable
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      # Restrict our IAM role permissions to
+      # the specific table for the stage
+      Resource:
+        - "Fn::GetAtt": [ IndeedJobsTable, Arn ]
   
 functions:
   scrape:
@@ -13,8 +27,24 @@ functions:
         enabled: false
         input:
           pages: 5
-      
+          ads_per_page: 10
 
+resources:
+  Resources:
+    IndeedJobsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: IndeedJobsTable
+        AttributeDefinitions:
+          -
+            AttributeName: url
+            AttributeType: S
+        KeySchema:
+          - 
+            AttributeName: url
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+  
 plugins:
   - serverless-python-requirements
 

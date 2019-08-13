@@ -2,9 +2,12 @@ import json
 import botocore.vendored.requests as requests
 import time
 from bs4 import BeautifulSoup
+import boto3
 
 # Run this once a day, it gets completely refreshed once per day
-BASE_LINK = 'https://www.indeed.ca/jobs?l=Toronto,+ON&sort=date&fromage=1'
+BASE_LINK = 'https://www.indeed.ca/jobs?l=Toronto,+ON&sort=date&fromage=1&limit=20'
+dynamodb = boto3.resource('dynamodb')
+jobs_table = dynamodb.Table('IndeedJobsTable')
 
 def scrape(event, context):
     search = IndeedSearch(BASE_LINK)
@@ -12,7 +15,10 @@ def scrape(event, context):
     early_stop = event['ads_per_page']
     for i in range(num_pages):
         results = search.process_visit_link(early_stop)
-        print(results)
+        for res in results:
+            jobs_table.put_item(
+                Item=vars(res)
+            )
         search.update_visit_link()
 
 
@@ -64,18 +70,38 @@ class IndeedJobAd:
 
     def extract_card(self):
         self.time_scraped = int(time.time())
-        title_soup = find_element_from_soup(self.ad_soup, 'a', 'class', 'jobtitle')
-        metadata_soup = find_element_from_soup(self.ad_soup, 'div', 'class', 'sjcl')
-        post_date_soup = find_element_from_soup(self.ad_soup, 'span', 'class', 'date')
+        title_soup = find_element_from_soup(self.ad_soup,
+                [{'el': 'a',
+                'tag': 'class',
+                'attr': 'jobtitle'}])
+        metadata_soup = find_element_from_soup(self.ad_soup,
+                [{'el': 'div',
+                'tag': 'class',
+                'attr': 'sjcl'}])
+        post_date_soup = find_element_from_soup(self.ad_soup,
+                [{'el': 'span',
+                'tag': 'class',
+                'attr': 'date'}])
+        del self.ad_soup
 
         if title_soup:
             self.title = title_soup.text.strip()
-            self.link = title_soup['href']
+            self.url = title_soup['href']
 
         if metadata_soup:
-            company_soup = find_element_from_soup(metadata_soup, 'span', 'class', 'company')
-            location_soup = find_element_from_soup(metadata_soup, 'span', 'class', 'location')
-            
+            company_soup = find_element_from_soup(metadata_soup,
+                    [{'el': 'span',
+                      'tag': 'class',
+                      'attr': 'company'}])
+
+            location_soup = find_element_from_soup(metadata_soup,
+                    [{'el': 'span',
+                      'tag': 'class',
+                      'attr': 'location'},
+                      {'el': 'div',
+                      'tag': 'class',
+                      'attr': 'location'}])
+
             if company_soup:
                 self.company = company_soup.text.strip()
             if location_soup:
@@ -85,26 +111,32 @@ class IndeedJobAd:
             self.post_date = post_date_soup.text.strip()
 
     def visit_link_to_extract_description(self):
-        if self.link:
-            job_url = self.BASE_INDEED + self.link
+        if self.url:
+            job_url = self.BASE_INDEED + self.url
 
             print('Issuing GET: ' + job_url)
             job_response = requests.get(job_url)
             print('GET Success, Parsing...')
 
             specific_job_soup = BeautifulSoup(job_response.text, 'html.parser')
-            description = find_element_from_soup(specific_job_soup, \
-                    'div', 'class', 'jobsearch-JobComponent-description')
+            description = find_element_from_soup(specific_job_soup,
+                    [{'el': 'div',
+                      'tag': 'class',
+                      'attr': 'jobsearch-JobComponent-description'}])
             if description:
                 self.description = str(description)
 
 
-def find_element_from_soup(soup, el, tag, attr):
-    print('Looking for ' + attr + '... Found if not otherwise stated.')
-    result = soup.find(el, {tag, attr})
-    if not result:
-        print('NOT FOUND ' + attr + '... '  + str(soup.attrs))
-    return result
+def find_element_from_soup(soup, specs):
+
+    for spec in specs:
+        print('Looking for ' + spec['el'] + ' ' + spec['tag'] 
+                + ' ' + spec['attr'] + '... Found if not otherwise stated.')
+        result = soup.find(spec['el'], {spec['tag'], spec['attr']})
+        if result:
+            return result
+    print('NOT FOUND ' + specs[0]['attr'] + '... '  + str(soup.attrs))
+    return None
 
 def get_dict_size(d):
     size = 0
