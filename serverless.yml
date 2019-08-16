@@ -1,4 +1,9 @@
 service: jobs-scraper
+package:
+  exclude:
+    - node_modules/**
+    - tst/**
+    - analytics/**
 
 provider:
   name: aws
@@ -16,25 +21,27 @@ provider:
       # Restrict our IAM role permissions to
       # the specific table for the stage
       Resource:
-        - "Fn::GetAtt": [ IndeedJobsTable, Arn ]
+        - "Fn::GetAtt": [ JobsTable, Arn ]
   
 functions:
   scrape:
     handler: handler.scrape
+    memory: 128
+    timeout: 900
     events:
       - schedule:
-        rate: rate(1 day)
-        enabled: false
-        input:
-          pages: 5
-          ads_per_page: 10
+          rate: rate(4 hours)
+          enabled: false
+          input:
+            pages: 20
+            ads_per_page: 50
 
 resources:
   Resources:
-    IndeedJobsTable:
+    JobsTable:
       Type: AWS::DynamoDB::Table
       Properties:
-        TableName: IndeedJobsTable
+        TableName: JobsTable
         AttributeDefinitions:
           -
             AttributeName: url

@@ -3,14 +3,16 @@ import botocore.vendored.requests as requests
 import time
 from bs4 import BeautifulSoup
 import boto3
+import datetime
 
 # Run this once a day, it gets completely refreshed once per day
-BASE_LINK = 'https://www.indeed.ca/jobs?l=Toronto,+ON&sort=date&fromage=1&limit=20'
+BASE_LINK = 'https://www.indeed.ca/jobs?l=Toronto,+ON&sort=date&fromage=1&limit=50'
 dynamodb = boto3.resource('dynamodb')
-jobs_table = dynamodb.Table('IndeedJobsTable')
+jobs_table = dynamodb.Table('JobsTable')
 
 def scrape(event, context):
-    search = IndeedSearch(BASE_LINK)
+    scrape_start_time = int(time.time())#datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    search = IndeedSearch(BASE_LINK, scrape_start_time)
     num_pages = event['pages']
     early_stop = event['ads_per_page']
     for i in range(num_pages):
@@ -25,16 +27,17 @@ def scrape(event, context):
 class IndeedSearch:
     # base_link is the base query without indexing the pages of the search
     # visit_link is indexed pages, it's updated
-    def __init__(self, base_link):
+    def __init__(self, base_link, scrape_start_time):
         self.base_link = base_link
         self.num_ads = 0 
         self.visit_link = base_link + '&start=' + str(self.num_ads)
+        self.scrape_start_time = scrape_start_time
     
     def update_visit_link(self):
         self.num_ads += 20
         self.visit_link = self.base_link + '&start=' + str(self.num_ads)
 
-    def process_visit_link(self, ads_to_visit=20):
+    def process_visit_link(self, ads_to_visit=999):
         jobs_data = []
         print('Issuing GET: ' + self.visit_link)
         search_query = requests.get(self.visit_link)
@@ -47,9 +50,10 @@ class IndeedSearch:
         print('Found ' + str(len(ad_card_soups)) + ' ad cards.')
 
         for ad_card_soup in ad_card_soups:
-            job_ad = IndeedJobAd(ad_card_soup)
-            job_ad.extract_card()
-            jobs_data.append(job_ad)
+            job_ad = IndeedJobAd(ad_card_soup, self.scrape_start_time)
+            valid_card = job_ad.extract_card()
+            if valid_card:
+                jobs_data.append(job_ad)
             if len(jobs_data) > ads_to_visit:
                 break
 
@@ -65,11 +69,12 @@ class IndeedJobAd:
     BASE_INDEED = 'https://www.indeed.com'
 
     # Initalize with a BeautifulSoup Card element
-    def __init__(self, ad_soup):
+    def __init__(self, ad_soup, scrape_start_time):
         self.ad_soup = ad_soup
+        self.scrape_start_time = scrape_start_time
 
+    # Returns false if Job Posting is sponsored
     def extract_card(self):
-        self.time_scraped = int(time.time())
         title_soup = find_element_from_soup(self.ad_soup,
                 [{'el': 'a',
                 'tag': 'class',
@@ -83,10 +88,13 @@ class IndeedJobAd:
                 'tag': 'class',
                 'attr': 'date'}])
         del self.ad_soup
-
+    
         if title_soup:
             self.title = title_soup.text.strip()
             self.url = title_soup['href']
+            self.apply_url = self.BASE_INDEED + title_soup['href']
+            if self.url.startswith('/pagead'):
+                return False
 
         if metadata_soup:
             company_soup = find_element_from_soup(metadata_soup,
@@ -108,7 +116,9 @@ class IndeedJobAd:
                 self.location = location_soup.text.strip()
 
         if post_date_soup:
-            self.post_date = post_date_soup.text.strip()
+            self.get_post_date_and_time(post_date_soup.text.strip())
+        
+        return True
 
     def visit_link_to_extract_description(self):
         if self.url:
@@ -126,6 +136,19 @@ class IndeedJobAd:
             if description:
                 self.description = str(description)
 
+    def get_post_date_and_time(self, post_time):
+        post_time_epoch = self.scrape_start_time
+
+        if 'hour' in post_time:
+            num_hours = int(post_time[0:2].strip())
+            post_time_epoch -= num_hours * 60 * 60
+        
+        elif 'minute' in post_time:
+            num_hours = int(post_time[0:2].strip())
+            post_time_epoch -= num_hours * 60
+        
+        self.post_date = datetime.datetime.utcfromtimestamp(post_time_epoch).strftime('%Y-%m-%d %H:%M:%S')
+            
 
 def find_element_from_soup(soup, specs):
 

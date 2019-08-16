@@ -2,7 +2,9 @@
   "name": "indeedscraper",
   "description": "",
   "version": "0.1.0",
-  "dependencies": {},
+  "dependencies": {
+    "serverless": "^1.50.0"
+  },
   "devDependencies": {
     "serverless-python-requirements": "^4.3.0"
   }
