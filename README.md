@@ -13,4 +13,4 @@ To fully understand how this package works
 1. [CloudFormation](https://aws.amazon.com/cloudformation/)
 2. [Webscraping](https://en.wikipedia.org/wiki/Web_scraping)
 3. [Serverless Framework](https://serverless.com/)
-4. [DynamoDB]((https://aws.amazon.com/dynamodb/)
+4. [DynamoDB](https://aws.amazon.com/dynamodb/)
