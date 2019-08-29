@@ -19,3 +19,6 @@ var/
 
 # Serverless directories
 .serverless
+.DS_Store
+__pycache__/
+src/__pycahce__/

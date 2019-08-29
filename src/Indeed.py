@@ -106,8 +106,8 @@ class IndeedJobAd:
     
         if title_soup:
             self.title = title_soup.text.strip()
-            self.url = title_soup['href']
-            self.apply_url = self.BASE_INDEED + title_soup['href']
+            self.url = self.BASE_INDEED + title_soup['href']
+            self.source = 'INDEED'
             if self.url.startswith('/pagead'):
                 return False
 

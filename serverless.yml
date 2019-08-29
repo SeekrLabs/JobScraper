@@ -24,7 +24,7 @@ functions:
     events:
       - schedule:
           rate: rate(4 hours)
-          enabled: false
+          enabled: true
           input:
             pages: 20
             ads_per_page: 50
